@@ -7,7 +7,14 @@ import com.neorios.neorios.repository.TransaccionRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.neorios.neorios.model.Notificacion;
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -82,7 +89,6 @@ public class TransaccionService {
         Transaccion original = transaccionRepository.findById(transaccionId)
                 .orElseThrow(() -> new RuntimeException("Transacción no encontrada"));
 
-        // Validación de tiempo límite (15 minutos)
         LocalDateTime limite = original.getFecha().plusMinutes(15);
         if (LocalDateTime.now().isAfter(limite)) {
             throw new RuntimeException("No se puede revertir: pasaron más de 15 minutos desde la transacción");
@@ -130,5 +136,75 @@ public class TransaccionService {
                 " (" + t.getCuentaDestino().getUsuario().getNombre() + ")\n" +
                 "Monto: $" + t.getMonto() + "\n" +
                 "==============================================";
+    }
+
+    public byte[] generarExtractoPdf(String numeroCuenta) throws IOException {
+        Cuenta cuenta = cuentaRepository.findByNumeroCuenta(numeroCuenta)
+                .orElseThrow(() -> new RuntimeException("Cuenta no encontrada"));
+
+        List<Transaccion> movimientos = transaccionRepository
+                .findByCuentaOrigenIdOrCuentaDestinoId(cuenta.getId(), cuenta.getId());
+
+        PDDocument documento = new PDDocument();
+        PDPage pagina = new PDPage();
+        documento.addPage(pagina);
+
+        PDPageContentStream contenido = new PDPageContentStream(documento, pagina);
+
+        float y = 750;
+        contenido.beginText();
+        contenido.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD), 16);
+        contenido.newLineAtOffset(50, y);
+        contenido.showText("EXTRACTO BANCARIO - NEORIOS");
+        contenido.endText();
+
+        y -= 30;
+        contenido.beginText();
+        contenido.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 11);
+        contenido.newLineAtOffset(50, y);
+        contenido.showText("Cuenta: " + cuenta.getNumeroCuenta());
+        contenido.endText();
+
+        y -= 15;
+        contenido.beginText();
+        contenido.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 11);
+        contenido.newLineAtOffset(50, y);
+        contenido.showText("Titular: " + cuenta.getUsuario().getNombre());
+        contenido.endText();
+
+        y -= 15;
+        contenido.beginText();
+        contenido.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 11);
+        contenido.newLineAtOffset(50, y);
+        contenido.showText("Saldo actual: $" + cuenta.getSaldo());
+        contenido.endText();
+
+        y -= 30;
+
+        for (Transaccion t : movimientos) {
+            boolean esOrigen = t.getCuentaOrigen().getId().equals(cuenta.getId());
+            String tipo = esOrigen ? "SALIDA" : "ENTRADA";
+            String contraparte = esOrigen
+                    ? t.getCuentaDestino().getNumeroCuenta()
+                    : t.getCuentaOrigen().getNumeroCuenta();
+
+            String linea = t.getFecha() + " | " + tipo + " | $" + t.getMonto() + " | cuenta: " + contraparte;
+
+            contenido.beginText();
+            contenido.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 9);
+            contenido.newLineAtOffset(50, y);
+            contenido.showText(linea);
+            contenido.endText();
+
+            y -= 15;
+        }
+
+        contenido.close();
+
+        ByteArrayOutputStream salida = new ByteArrayOutputStream();
+        documento.save(salida);
+        documento.close();
+
+        return salida.toByteArray();
     }
 }
