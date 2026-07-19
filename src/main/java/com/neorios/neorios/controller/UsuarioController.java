@@ -19,8 +19,13 @@ public class UsuarioController {
     }
 
     @PostMapping("/login")
-    public Usuario login(@RequestBody Usuario datosLogin) {
+    public String login(@RequestBody Usuario datosLogin) {
         return usuarioService.login(datosLogin.getCorreo(), datosLogin.getContrasena());
+    }
+
+    @PostMapping("/verificar-2fa")
+    public Usuario verificar2FA(@RequestParam String correo, @RequestParam String codigo) {
+        return usuarioService.verificar2FA(correo, codigo);
     }
 
     @GetMapping("/todos")

@@ -33,13 +33,41 @@ public class UsuarioService {
     
     }
 
-    public Usuario login(String correo, String contrasena) {
+    public String login(String correo, String contrasena) {
         Usuario usuario = usuarioRepository.findByCorreo(correo)
                 .orElseThrow(() -> new RuntimeException("Correo o contraseña incorrectos"));
 
         if (!passwordEncoder.matches(contrasena, usuario.getContrasena())) {
             throw new RuntimeException("Correo o contraseña incorrectos");
         }
+
+        if (usuario.getBloqueado()) {
+            throw new RuntimeException("Usuario bloqueado, contacta al administrador");
+        }
+
+        String codigo = String.valueOf(100000 + new java.util.Random().nextInt(900000));
+        usuario.setCodigoRecuperacion(codigo);
+        usuario.setCodigoExpiracion(LocalDateTime.now().plusMinutes(5));
+        usuarioRepository.save(usuario);
+
+        return "Credenciales correctas. Código 2FA enviado: " + codigo + " (válido 5 minutos)";
+    }
+
+    public Usuario verificar2FA(String correo, String codigo) {
+        Usuario usuario = usuarioRepository.findByCorreo(correo)
+                .orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
+
+        if (usuario.getCodigoRecuperacion() == null || !usuario.getCodigoRecuperacion().equals(codigo)) {
+            throw new RuntimeException("Código 2FA incorrecto");
+        }
+
+        if (LocalDateTime.now().isAfter(usuario.getCodigoExpiracion())) {
+            throw new RuntimeException("El código 2FA expiró, inicia sesión de nuevo");
+        }
+
+        usuario.setCodigoRecuperacion(null);
+        usuario.setCodigoExpiracion(null);
+        usuarioRepository.save(usuario);
 
         return usuario;
     }
