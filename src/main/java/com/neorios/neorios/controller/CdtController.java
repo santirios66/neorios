@@ -11,6 +11,7 @@ import java.util.List;
 @RequestMapping("/api/cdts")
 public class CdtController {
 
+    // Logica de los CDTS
     @Autowired
     private CdtService cdtService;
 
